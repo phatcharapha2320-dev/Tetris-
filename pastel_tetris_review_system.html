@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pastel Tetris & Player Stats</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #fdf2f8, #fce7f3, #fbcfe8); /* pink-50 to pink-200 */
+            color: #4c1d95; /* Deep purple/pink text for readability */
+            overscroll-behavior-y: contain; /* Prevent pull-to-refresh on mobile */
+            min-height: 100vh;
+        }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(253, 164, 175, 0.4); /* rose-300 */
+            box-shadow: 0 8px 32px 0 rgba(244, 114, 182, 0.15); /* pink-400 */
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            border-radius: 8px;
+        }
+
+        .star-rating i {
+            cursor: pointer;
+            transition: transform 0.2s, color 0.2s;
+        }
+        .star-rating i:hover, .star-rating i.active {
+            color: #f472b6; /* pink-400 */
+            transform: scale(1.15);
+        }
+
+        /* Custom Scrollbar for review list */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(253, 232, 243, 0.5); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #f9a8d4; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f472b6; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-2 relative overflow-hidden">
+
+    <!-- Main Game UI -->
+    <div id="game-ui" class="w-full max-w-4xl flex flex-col md:flex-row gap-4 items-center md:items-start justify-center pt-4 md:pt-10">
+        
+        <!-- Left Panel: Stats & Controls Info -->
+        <div class="glass-panel p-5 rounded-3xl w-full md:w-52 flex flex-col gap-4 order-2 md:order-1 text-center md:text-left">
+            <div>
+                <h2 class="text-pink-400 text-sm uppercase tracking-wider font-semibold">Score</h2>
+                <div id="score" class="text-3xl font-bold text-rose-500 drop-shadow-sm">0</div>
+            </div>
+            <div>
+                <h2 class="text-pink-400 text-sm uppercase tracking-wider font-semibold">Level</h2>
+                <div id="level" class="text-2xl font-bold text-purple-400 drop-shadow-sm">1</div>
+            </div>
+            <div>
+                <h2 class="text-pink-400 text-sm uppercase tracking-wider font-semibold">Lines</h2>
+                <div id="lines" class="text-2xl font-bold text-pink-500 drop-shadow-sm">0</div>
+            </div>
+            
+            <div class="hidden md:block mt-auto pt-4 border-t border-pink-200 text-sm text-pink-400/80">
+                <p class="mb-1"><i class="fas fa-arrow-up w-5 text-pink-300"></i> หมุนบล็อก</p>
+                <p class="mb-1"><i class="fas fa-arrows-alt-h w-5 text-pink-300"></i> ซ้าย/ขวา</p>
+                <p class="mb-1"><i class="fas fa-arrow-down w-5 text-pink-300"></i> ลงเร็ว</p>
+                <p><i class="fas fa-space-shuttle w-5 text-pink-300"></i> วางทันที</p>
+            </div>
+
+            <button onclick="showStatsModal()" class="mt-4 bg-white hover:bg-pink-50 text-pink-500 border-2 border-pink-300 py-2 rounded-xl font-semibold transition shadow-sm">
+                <i class="fas fa-chart-bar mr-2 text-pink-400"></i> สถิติ & รีวิว
+            </button>
+        </div>
+
+        <!-- Center Panel: Game Canvas -->
+        <div class="relative order-1 md:order-2 flex flex-col items-center">
+            <div class="glass-panel p-2 rounded-2xl shadow-lg shadow-pink-200">
+                <!-- 10x20 grid, each block 30px -->
+                <canvas id="tetris" width="300" height="600" class="bg-white border-2 border-pink-100 w-[250px] h-[500px] md:w-[300px] md:h-[600px]"></canvas>
+            </div>
+            
+            <!-- Mobile Controls -->
+            <div class="grid grid-cols-3 gap-2 mt-4 md:hidden w-[250px]">
+                <button id="btn-left" class="glass-panel active:bg-pink-100 p-4 rounded-2xl text-xl"><i class="fas fa-arrow-left text-rose-400"></i></button>
+                <button id="btn-rotate" class="glass-panel active:bg-pink-100 p-4 rounded-2xl text-xl"><i class="fas fa-rotate-right text-purple-400"></i></button>
+                <button id="btn-right" class="glass-panel active:bg-pink-100 p-4 rounded-2xl text-xl"><i class="fas fa-arrow-right text-rose-400"></i></button>
+                <button id="btn-down" class="col-span-2 glass-panel active:bg-pink-100 p-4 rounded-2xl w-full text-lg font-semibold text-pink-500"><i class="fas fa-arrow-down mr-1"></i> Soft Drop</button>
+                <button id="btn-hard" class="glass-panel active:bg-pink-100 p-4 rounded-2xl text-xl"><i class="fas fa-space-shuttle text-violet-500"></i></button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Next Piece -->
+        <div class="glass-panel p-5 rounded-3xl w-full md:w-52 flex flex-col items-center order-3">
+            <h2 class="text-pink-400 text-sm uppercase tracking-wider mb-2 font-semibold">Next Piece</h2>
+            <div class="bg-white p-2 rounded-xl border border-pink-100 shadow-inner mb-4">
+                <canvas id="next-piece" width="120" height="120" class="rounded"></canvas>
+            </div>
+            
+            <button id="start-btn" class="w-full bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 text-white py-3 rounded-xl font-bold text-lg transition mt-auto shadow-lg shadow-pink-300/50">
+                START GAME
+            </button>
+            <button id="pause-btn" onclick="togglePause()" class="hidden w-full bg-gradient-to-r from-purple-400 to-violet-400 hover:from-purple-500 hover:to-violet-500 text-white py-3 rounded-xl font-bold text-lg transition mt-2 shadow-lg shadow-purple-300/50">
+                <i class="fas fa-pause"></i> PAUSE
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Name Input Modal -->
+    <div id="name-modal" class="fixed inset-0 bg-pink-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white/95 w-full max-w-sm p-8 rounded-[2rem] border-t-8 border-pink-400 animate-[fadeIn_0.3s_ease-out] shadow-2xl">
+            <div class="text-center mb-6">
+                <i class="fas fa-gamepad text-4xl text-pink-300 mb-3"></i>
+                <h2 class="text-2xl font-bold text-rose-500">ยินดีต้อนรับสู่เกม!</h2>
+                <p class="text-pink-400 text-sm mt-1">Tetris พาสเทลสุดน่ารัก</p>
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm text-gray-600 mb-2 font-semibold">กรุณากรอกชื่อของคุณก่อนเริ่มเล่น</label>
+                <input type="text" id="player-name-input" class="w-full bg-pink-50 border-2 border-pink-200 rounded-xl p-3 text-pink-900 focus:border-rose-400 focus:outline-none placeholder-pink-300 transition text-center font-medium" placeholder="พิมพ์ชื่อน่ารักๆ ของคุณ...">
+            </div>
+            <button onclick="saveNameAndClose()" class="w-full bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 py-3 rounded-xl font-bold transition shadow-lg shadow-pink-300/50 text-white text-lg">เข้าสู่เกม</button>
+        </div>
+    </div>
+
+    <!-- Game Over & Review Modal -->
+    <div id="game-over-modal" class="hidden fixed inset-0 bg-pink-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white/95 w-full max-w-md p-6 rounded-[2rem] border-t-8 border-rose-400 animate-[fadeIn_0.3s_ease-out] shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 class="text-4xl font-bold text-center text-rose-500 mb-2">GAME OVER</h2>
+            <p class="text-center text-gray-500 mb-6 font-medium">คะแนนของคุณ: <span id="final-score" class="text-pink-500 font-bold text-2xl ml-1">0</span></p>
+            
+            <hr class="border-pink-100 mb-6">
+            
+            <h3 class="text-xl font-bold mb-3 text-center text-purple-500">ให้คะแนนเกมนี้ (รีวิว)</h3>
+            
+            <!-- Star Rating -->
+            <div class="flex justify-center gap-3 text-4xl text-gray-300 mb-6 star-rating" id="star-container">
+                <i class="fas fa-star" data-rating="1"></i>
+                <i class="fas fa-star" data-rating="2"></i>
+                <i class="fas fa-star" data-rating="3"></i>
+                <i class="fas fa-star" data-rating="4"></i>
+                <i class="fas fa-star" data-rating="5"></i>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-green-500 font-semibold mb-1"><i class="fas fa-heart text-pink-400"></i> สิ่งที่ชอบในเกมนี้</label>
+                    <textarea id="review-likes" class="w-full bg-pink-50 border border-pink-200 rounded-xl p-3 text-sm text-pink-900 focus:border-rose-400 focus:outline-none h-20 placeholder-pink-300" placeholder="สีสวยจังเลย, เล่นง่ายมาก..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm text-purple-500 font-semibold mb-1"><i class="fas fa-comment-dots text-purple-300"></i> สิ่งที่ไม่ชอบ/ควรปรับปรุง</label>
+                    <textarea id="review-dislikes" class="w-full bg-pink-50 border border-pink-200 rounded-xl p-3 text-sm text-pink-900 focus:border-rose-400 focus:outline-none h-20 placeholder-pink-300" placeholder="อยากให้มีเพลง, บล็อกลงเร็วไป..."></textarea>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="skipReview()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-3 rounded-xl font-semibold transition">ข้าม / เล่นใหม่</button>
+                    <button id="submit-review-btn" onclick="submitReview()" class="flex-1 bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 text-white py-3 rounded-xl font-bold transition shadow-lg shadow-pink-300/40">ส่งรีวิว</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats / Reviews Modal -->
+    <div id="stats-modal" class="hidden fixed inset-0 bg-pink-900/30 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-2xl p-6 rounded-[2rem] border-t-8 border-purple-400 h-[80vh] flex flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-purple-500"><i class="fas fa-users text-pink-400 mr-2"></i> สถิติผู้เล่น & รีวิว</h2>
+                <button onclick="closeStatsModal()" class="text-pink-400 hover:text-rose-500 transition"><i class="fas fa-times text-2xl"></i></button>
+            </div>
+            
+            <!-- Summary -->
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-white/80 p-4 rounded-2xl text-center shadow-sm border border-pink-50">
+                    <p class="text-pink-400 text-sm font-semibold mb-1">จำนวนผู้ให้รีวิว</p>
+                    <p class="text-4xl font-bold text-rose-500" id="total-reviews">0</p>
+                    <p class="text-xs text-gray-400 mt-1">เป้าหมาย: 20 คน</p>
+                </div>
+                <div class="bg-white/80 p-4 rounded-2xl text-center shadow-sm border border-pink-50">
+                    <p class="text-pink-400 text-sm font-semibold mb-1">คะแนนเฉลี่ย</p>
+                    <p class="text-4xl font-bold text-pink-400" id="avg-rating">0.0 <i class="fas fa-star text-xl text-yellow-400"></i></p>
+                </div>
+            </div>
+
+            <!-- Review List -->
+            <div class="flex-1 overflow-y-auto pr-2 space-y-3" id="reviews-list">
+                <div class="text-center text-pink-300 mt-10">
+                    <i class="fas fa-spinner fa-spin text-4xl mb-3"></i>
+                    <p class="font-medium">กำลังโหลดข้อมูลน่ารักๆ...</p>
+                </div>
+                <!-- Reviews will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // ==========================================
+        // FIREBASE SETUP & LOGIC
+        // ==========================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tetris-pastel-app';
+        let firebaseConfig = {
+            apiKey: "demo-key",
+            projectId: "demo-project"
+        };
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = JSON.parse(__firebase_config);
+            }
+        } catch(e) { console.warn("Using dummy firebase config for demo"); }
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let currentUser = null;
+        let reviewsCache = [];
+        let playerName = "";
+        let isPaused = false;
+
+        // Auth Flow
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                listenToReviews();
+            }
+        });
+
+        // Firebase Functions
+        function listenToReviews() {
+            if(!currentUser) return;
+            const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'tetris_reviews');
+            
+            onSnapshot(reviewsRef, (snapshot) => {
+                const reviews = [];
+                snapshot.forEach((doc) => {
+                    reviews.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort by time descending in memory
+                reviews.sort((a, b) => {
+                    const timeA = a.timestamp?.toMillis() || 0;
+                    const timeB = b.timestamp?.toMillis() || 0;
+                    return timeB - timeA;
+                });
+                
+                reviewsCache = reviews;
+                updateStatsUI();
+            }, (error) => {
+                console.error("Error fetching reviews:", error);
+            });
+        }
+
+        window.submitReviewToDB = async (rating, likes, dislikes) => {
+            if (!currentUser) return false;
+            try {
+                const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'tetris_reviews');
+                await addDoc(reviewsRef, {
+                    userId: currentUser.uid,
+                    playerName: playerName || 'Anonymous',
+                    rating: rating,
+                    likes: likes,
+                    dislikes: dislikes,
+                    timestamp: serverTimestamp(),
+                    score: player.score
+                });
+                return true;
+            } catch (error) {
+                console.error("Error adding review:", error);
+                return false;
+            }
+        };
+
+        // UI Updates for Stats
+        function updateStatsUI() {
+            const listEl = document.getElementById('reviews-list');
+            const totalEl = document.getElementById('total-reviews');
+            const avgEl = document.getElementById('avg-rating');
+            
+            if (reviewsCache.length === 0) {
+                totalEl.innerText = '0';
+                avgEl.innerHTML = '0.0 <i class="fas fa-star text-xl text-yellow-400"></i>';
+                listEl.innerHTML = `<div class="text-center text-pink-400 mt-10"><p>ยังไม่มีข้อมูลรีวิวในขณะนี้</p><p class="text-sm mt-2">เล่นเกมและเป็นคนแรกที่ให้รีวิวสิ!</p></div>`;
+                return;
+            }
+
+            totalEl.innerText = reviewsCache.length;
+            
+            let totalRating = 0;
+            let html = '';
+            
+            reviewsCache.forEach(rev => {
+                totalRating += rev.rating;
+                
+                // Generate stars HTML
+                let starsHTML = '';
+                for(let i=1; i<=5; i++) {
+                    starsHTML += `<i class="fas fa-star ${i <= rev.rating ? 'text-pink-400' : 'text-gray-300'} text-sm"></i>`;
+                }
+
+                html += `
+                    <div class="bg-white/70 p-4 rounded-2xl border border-pink-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex gap-1">${starsHTML}</div>
+                            <span class="text-sm font-bold text-rose-500">${escapeHTML(rev.playerName || 'Anonymous')} <span class="text-xs text-pink-400 font-normal ml-2 bg-pink-50 px-2 py-1 rounded-full">Score: ${rev.score || 0}</span></span>
+                        </div>
+                        ${rev.likes ? `<p class="text-sm text-green-600 mb-1"><i class="fas fa-heart text-pink-300 mr-1"></i> ${escapeHTML(rev.likes)}</p>` : ''}
+                        ${rev.dislikes ? `<p class="text-sm text-purple-500"><i class="fas fa-comment-dots text-purple-300 mr-1"></i> ${escapeHTML(rev.dislikes)}</p>` : ''}
+                        ${(!rev.likes && !rev.dislikes) ? `<p class="text-sm text-gray-400 italic">ให้ดาวอย่างเดียว ไม่ได้พิมพ์ข้อความจ้า</p>` : ''}
+                    </div>
+                `;
+            });
+
+            const avg = (totalRating / reviewsCache.length).toFixed(1);
+            avgEl.innerHTML = `${avg} <i class="fas fa-star text-xl text-yellow-400"></i>`;
+            listEl.innerHTML = html;
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        // Initialize Firebase Auth
+        initAuth();
+
+        // ==========================================
+        // TETRIS ENGINE LOGIC
+        // ==========================================
+        const canvas = document.getElementById('tetris');
+        const ctx = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('next-piece');
+        const nextCtx = nextCanvas.getContext('2d');
+        
+        // Scale context
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 30; // 300 / 10
+        ctx.scale(BLOCK_SIZE, BLOCK_SIZE);
+        nextCtx.scale(30, 30);
+
+        // Colors mapping (Pastel Cute Theme)
+        const COLORS = [
+            null,
+            '#67e8f9', // I - Pastel Cyan
+            '#93c5fd', // J - Pastel Blue
+            '#fdba74', // L - Pastel Orange
+            '#fde047', // O - Pastel Yellow
+            '#86efac', // S - Pastel Green
+            '#d8b4fe', // T - Pastel Purple
+            '#fca5a5'  // Z - Pastel Red
+        ];
+
+        // Shapes
+        const SHAPES = [
+            [],
+            [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], // I
+            [[2,0,0], [2,2,2], [0,0,0]], // J
+            [[0,0,3], [3,3,3], [0,0,0]], // L
+            [[4,4], [4,4]], // O
+            [[0,5,5], [5,5,0], [0,0,0]], // S
+            [[0,6,0], [6,6,6], [0,0,0]], // T
+            [[7,7,0], [0,7,7], [0,0,0]]  // Z
+        ];
+
+        // Create empty matrix
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        let board = createMatrix(COLS, ROWS);
+
+        // Player state
+        const player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            nextMatrix: null,
+            score: 0,
+            lines: 0,
+            level: 1
+        };
+
+        // Game State
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let gameRunning = false;
+        let animationId = null;
+
+        function drawMatrix(matrix, offset, context) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        context.fillStyle = COLORS[value];
+                        
+                        // Soft glow
+                        context.shadowBlur = 4;
+                        context.shadowColor = COLORS[value];
+                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        
+                        // Inner border for cute 3D bevel effect
+                        context.shadowBlur = 0;
+                        context.fillStyle = 'rgba(255,255,255,0.5)';
+                        context.fillRect(x + offset.x, y + offset.y, 1, 0.15); // top
+                        context.fillRect(x + offset.x, y + offset.y, 0.15, 1); // left
+                        context.fillStyle = 'rgba(0,0,0,0.08)';
+                        context.fillRect(x + offset.x, y + offset.y + 0.85, 1, 0.15); // bottom
+                        context.fillRect(x + offset.x + 0.85, y + offset.y, 0.15, 1); // right
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            // Clear board with soft blush color
+            ctx.fillStyle = '#fff0f5'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid lines
+            ctx.strokeStyle = 'rgba(244,114,182,0.15)'; // pink-400 at 15%
+            ctx.lineWidth = 0.05;
+            for(let i=0; i<COLS; i++){
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, ROWS); ctx.stroke();
+            }
+            for(let i=0; i<ROWS; i++){
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(COLS, i); ctx.stroke();
+            }
+
+            drawMatrix(board, {x: 0, y: 0}, ctx);
+            if (player.matrix) {
+                drawMatrix(player.matrix, player.pos, ctx);
+            }
+        }
+
+        function drawNext() {
+            nextCtx.fillStyle = '#fff0f5'; // soft blush
+            nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            if (player.nextMatrix) {
+                // Center the piece
+                const offset = {
+                    x: (4 - player.nextMatrix[0].length) / 2,
+                    y: (4 - player.nextMatrix.length) / 2
+                };
+                drawMatrix(player.nextMatrix, offset, nextCtx);
+            }
+        }
+
+        function merge(board, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        board[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function collide(board, player) {
+            const m = player.matrix;
+            const o = player.pos;
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                        (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function getRandomPiece() {
+            const index = Math.floor(Math.random() * 7) + 1; // 1 to 7
+            return SHAPES[index];
+        }
+
+        function resetPlayer() {
+            if (!player.nextMatrix) {
+                player.nextMatrix = getRandomPiece();
+            }
+            player.matrix = player.nextMatrix;
+            player.nextMatrix = getRandomPiece();
+            player.pos.y = 0;
+            player.pos.x = Math.floor(COLS / 2) - Math.floor(player.matrix[0].length / 2);
+
+            drawNext();
+
+            if (collide(board, player)) {
+                // Game Over
+                gameOver();
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(board, player)) {
+                player.pos.y--;
+                merge(board, player);
+                resetPlayer();
+                arenaSweep();
+            }
+            dropCounter = 0;
+        }
+
+        function playerMove(offset) {
+            player.pos.x += offset;
+            if (collide(board, player)) {
+                player.pos.x -= offset;
+            }
+        }
+
+        function playerHardDrop() {
+            while(!collide(board, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(board, player);
+            resetPlayer();
+            arenaSweep();
+            dropCounter = 0;
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            // Wall kick
+            while (collide(board, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            let linesCleared = 0;
+            outer: for (let y = board.length - 1; y >= 0; --y) {
+                for (let x = 0; x < board[y].length; ++x) {
+                    if (board[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = board.splice(y, 1)[0].fill(0);
+                board.unshift(row);
+                ++y;
+                linesCleared++;
+                
+                player.score += rowCount * 100 * player.level;
+                rowCount *= 2;
+            }
+            
+            if (linesCleared > 0) {
+                player.lines += linesCleared;
+                player.level = Math.floor(player.lines / 10) + 1;
+                // Speed up smoothly
+                dropInterval = Math.max(100, 1000 - (player.level - 1) * 100);
+                updateScoreUI();
+            }
+        }
+
+        window.saveNameAndClose = () => {
+            const nameInput = document.getElementById('player-name-input').value.trim();
+            if(nameInput) {
+                playerName = nameInput;
+                document.getElementById('name-modal').classList.add('hidden');
+            } else {
+                const inputField = document.getElementById('player-name-input');
+                inputField.classList.add('border-red-400');
+                setTimeout(() => inputField.classList.remove('border-red-400'), 1000);
+            }
+        };
+
+        window.togglePause = () => {
+            if (!gameRunning) return;
+            isPaused = !isPaused;
+            const pauseBtn = document.getElementById('pause-btn');
+            
+            if (isPaused) {
+                cancelAnimationFrame(animationId);
+                pauseBtn.innerHTML = '<i class="fas fa-play"></i> RESUME';
+                pauseBtn.classList.replace('from-purple-400', 'from-pink-400');
+                pauseBtn.classList.replace('to-violet-400', 'to-rose-400');
+                pauseBtn.classList.replace('hover:from-purple-500', 'hover:from-pink-500');
+                pauseBtn.classList.replace('hover:to-violet-500', 'hover:to-rose-500');
+                
+                // Draw Paused Screen Overlay (Milky soft white overlay)
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0); 
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#db2777'; // pink-600
+                ctx.font = 'bold 36px "Kanit"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#fbcfe8'; // pink-200
+                ctx.fillText('พักแป๊บนะ 💖', canvas.width/2, canvas.height/2);
+                ctx.restore();
+            } else {
+                pauseBtn.innerHTML = '<i class="fas fa-pause"></i> PAUSE';
+                pauseBtn.classList.replace('from-pink-400', 'from-purple-400');
+                pauseBtn.classList.replace('to-rose-400', 'to-violet-400');
+                pauseBtn.classList.replace('hover:from-pink-500', 'hover:from-purple-500');
+                pauseBtn.classList.replace('hover:to-rose-500', 'hover:to-violet-500');
+                lastTime = performance.now();
+                update();
+            }
+        };
+
+        function updateScoreUI() {
+            document.getElementById('score').innerText = player.score;
+            document.getElementById('level').innerText = player.level;
+            document.getElementById('lines').innerText = player.lines;
+        }
+
+        function update(time = 0) {
+            if (!gameRunning || isPaused) return;
+            
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+            
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+            
+            draw();
+            animationId = requestAnimationFrame(update);
+        }
+
+        function startGame() {
+            board = createMatrix(COLS, ROWS);
+            player.score = 0;
+            player.lines = 0;
+            player.level = 1;
+            dropInterval = 1000;
+            updateScoreUI();
+            player.nextMatrix = null;
+            resetPlayer();
+            
+            document.getElementById('start-btn').innerText = 'RESTART';
+            
+            const pauseBtn = document.getElementById('pause-btn');
+            pauseBtn.classList.remove('hidden');
+            pauseBtn.innerHTML = '<i class="fas fa-pause"></i> PAUSE';
+            isPaused = false;
+            
+            if(animationId) cancelAnimationFrame(animationId);
+            gameRunning = true;
+            lastTime = performance.now();
+            update();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('pause-btn').classList.add('hidden');
+            document.getElementById('final-score').innerText = player.score;
+            document.getElementById('game-over-modal').classList.remove('hidden');
+            
+            // Reset Review Form
+            selectedRating = 0;
+            updateStarUI();
+            document.getElementById('review-likes').value = '';
+            document.getElementById('review-dislikes').value = '';
+            document.getElementById('submit-review-btn').disabled = false;
+            document.getElementById('submit-review-btn').innerHTML = 'ส่งรีวิว';
+        }
+
+        // ==========================================
+        // CONTROLS & INPUT
+        // ==========================================
+        document.addEventListener('keydown', event => {
+            if (!gameRunning || isPaused) return;
+            switch(event.keyCode) {
+                case 37: // Left
+                    playerMove(-1);
+                    break;
+                case 39: // Right
+                    playerMove(1);
+                    break;
+                case 40: // Down
+                    playerDrop();
+                    break;
+                case 38: // Up
+                    playerRotate(1);
+                    break;
+                case 32: // Space
+                    playerHardDrop();
+                    break;
+            }
+        });
+
+        // Add pause shortcut (P or Escape)
+        document.addEventListener('keydown', event => {
+            if (event.keyCode === 80 || event.keyCode === 27) { // P or Esc
+                window.togglePause();
+            }
+        });
+
+        // Touch / Mobile Controls
+        function bindBtn(id, action) {
+            const btn = document.getElementById(id);
+            // Prevent default to stop zooming/scrolling
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); action(); });
+            btn.addEventListener('mousedown', (e) => { e.preventDefault(); action(); });
+        }
+        
+        bindBtn('btn-left', () => gameRunning && !isPaused && playerMove(-1));
+        bindBtn('btn-right', () => gameRunning && !isPaused && playerMove(1));
+        bindBtn('btn-rotate', () => gameRunning && !isPaused && playerRotate(1));
+        bindBtn('btn-down', () => gameRunning && !isPaused && playerDrop());
+        bindBtn('btn-hard', () => gameRunning && !isPaused && playerHardDrop());
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+
+        // ==========================================
+        // UI: MODALS & REVIEW SYSTEM
+        // ==========================================
+        let selectedRating = 0;
+
+        // Star click logic
+        document.querySelectorAll('.star-rating i').forEach(star => {
+            star.addEventListener('click', (e) => {
+                selectedRating = parseInt(e.target.getAttribute('data-rating'));
+                updateStarUI();
+            });
+        });
+
+        function updateStarUI() {
+            document.querySelectorAll('.star-rating i').forEach(star => {
+                const rating = parseInt(star.getAttribute('data-rating'));
+                if (rating <= selectedRating) {
+                    star.classList.replace('text-gray-300', 'text-pink-400');
+                    star.classList.add('active');
+                } else {
+                    star.classList.replace('text-pink-400', 'text-gray-300');
+                    star.classList.remove('active');
+                }
+            });
+        }
+
+        window.submitReview = async () => {
+            if (selectedRating === 0) {
+                // custom aesthetic alert/confirm replacing default UI visually where possible
+                const r = confirm("คุณยังไม่ได้เลือกดาว ยืนยันที่จะข้ามการรีวิวหรือไม่?");
+                if(r) skipReview();
+                return;
+            }
+            
+            const btn = document.getElementById('submit-review-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังส่ง...';
+            
+            const likes = document.getElementById('review-likes').value.trim();
+            const dislikes = document.getElementById('review-dislikes').value.trim();
+            
+            const success = await submitReviewToDB(selectedRating, likes, dislikes);
+            
+            if (success) {
+                document.getElementById('game-over-modal').classList.add('hidden');
+                showStatsModal(); // Show stats right after submission
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = 'ลองใหม่อีกครั้ง';
+            }
+        };
+
+        window.skipReview = () => {
+            document.getElementById('game-over-modal').classList.add('hidden');
+            startGame();
+        };
+
+        window.showStatsModal = () => {
+            document.getElementById('stats-modal').classList.remove('hidden');
+            updateStatsUI(); // ensure it renders current cache
+        };
+
+        window.closeStatsModal = () => {
+            document.getElementById('stats-modal').classList.add('hidden');
+        };
+
+        // Initial Draw
+        draw();
+        drawNext();
+
+    </script>
+</body>
+</html>
